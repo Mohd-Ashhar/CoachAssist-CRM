@@ -10,6 +10,7 @@ app.use(express.json());
 
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/dashboard", require("./routes/dashboard"));
+app.use("/api/leads", require("./routes/leads"));
 
 app.get("/", (req, res) => {
   res.json({ status: "WellnessZ API is running" });
