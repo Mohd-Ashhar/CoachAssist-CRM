@@ -56,10 +56,24 @@ export default function Dashboard() {
 
   if (!user) return null;
 
-  const chartData = analytics?.activityGraph?.map((day) => ({
-    name: new Date(day._id + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-    count: day.count,
-  })) || [];
+  // Build a padded 7-day array so the chart always shows a full week
+  const chartData = (() => {
+    const apiMap = {};
+    (analytics?.activityGraph || []).forEach((day) => {
+      apiMap[day._id] = day.count;
+    });
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split("T")[0]; // YYYY-MM-DD
+      days.push({
+        name: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        count: apiMap[key] || 0,
+      });
+    }
+    return days;
+  })();
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -145,18 +159,13 @@ export default function Dashboard() {
                   <p className="text-sm text-zinc-500">New leads over the last 7 days</p>
                 </div>
                 
-                {chartData.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center min-h-[300px]">
-                    <p className="text-zinc-400 text-sm">No activity recorded in the last 7 days.</p>
-                  </div>
-                ) : (
-                  <div className="flex-1 min-h-[320px] w-full">
+                <div className="flex-1 min-h-[320px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                         <defs>
                           <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
@@ -174,29 +183,20 @@ export default function Dashboard() {
                           dx={-12}
                           allowDecimals={false}
                         />
-                        <Tooltip
-                          contentStyle={{ 
-                            borderRadius: '12px', 
-                            border: '1px solid #f4f4f5', 
-                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)',
-                            padding: '12px'
-                          }}
-                          itemStyle={{ color: '#09090b', fontWeight: 600 }}
-                          labelStyle={{ color: '#71717a', marginBottom: '4px' }}
-                        />
+                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#e4e4e7', strokeDasharray: '4 4' }} />
                         <Area
                           type="monotone"
                           dataKey="count"
-                          stroke="#8b5cf6"
-                          strokeWidth={2.5}
+                          stroke="#4f46e5"
+                          strokeWidth={2}
                           fillOpacity={1}
                           fill="url(#colorCount)"
-                          activeDot={{ r: 6, fill: '#8b5cf6', stroke: '#FFFFFF', strokeWidth: 2 }}
+                          activeDot={{ r: 6, fill: '#4f46e5', stroke: '#FFFFFF', strokeWidth: 3 }}
+                          dot={false}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
-                )}
               </div>
 
               {/* Sidebar Content (Funnel & Sources) */}
@@ -253,6 +253,19 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white shadow-md rounded-lg border border-zinc-100 p-3 min-w-[120px]">
+      <p className="text-[11px] font-medium text-zinc-500 mb-1">{label}</p>
+      <p className="text-lg font-bold text-zinc-900 tracking-tight">
+        {payload[0].value}
+        <span className="text-xs font-medium text-zinc-400 ml-1">leads</span>
+      </p>
     </div>
   );
 }
