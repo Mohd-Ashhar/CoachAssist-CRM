@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const Lead = require("../models/Lead");
+const LeadActivity = require("../models/LeadActivity");
 const auth = require("../middleware/auth");
 
 // All lead routes require authentication
@@ -67,6 +68,14 @@ router.post("/", async (req, res) => {
     });
 
     const savedLead = await newLead.save();
+
+    await LeadActivity.create({
+      leadId: savedLead._id,
+      type: "STATUS_CHANGE",
+      content: `Lead created via ${source || 'Instagram'}`,
+      createdBy: req.user.id
+    });
+
     res.status(201).json(savedLead);
   } catch (err) {
     console.error("Error creating lead:", err);
@@ -77,15 +86,25 @@ router.post("/", async (req, res) => {
 // PATCH /api/leads/:id - Update a lead
 router.patch("/:id", async (req, res) => {
   try {
-    const lead = await Lead.findByIdAndUpdate(
+    const oldLead = await Lead.findById(req.params.id);
+    if (!oldLead) return res.status(404).json({ msg: "Lead not found" });
+
+    const updatedLead = await Lead.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
       { new: true, runValidators: true }
     );
 
-    if (!lead) return res.status(404).json({ msg: "Lead not found" });
+    if (req.body.status && req.body.status !== oldLead.status) {
+      await LeadActivity.create({
+        leadId: updatedLead._id,
+        type: "STATUS_CHANGE",
+        content: `Status changed from ${oldLead.status} to ${updatedLead.status}`,
+        createdBy: req.user.id
+      });
+    }
 
-    res.json(lead);
+    res.json(updatedLead);
   } catch (err) {
     console.error("Error updating lead:", err);
     if (err.kind === "ObjectId") return res.status(404).json({ msg: "Lead not found" });
@@ -104,6 +123,61 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error("Error deleting lead:", err);
     if (err.kind === "ObjectId") return res.status(404).json({ msg: "Lead not found" });
+    res.status(500).json({ msg: "Server error" });
+  }
+});
+
+// GET /api/leads/:id/timeline - Get paginated activities for a lead
+router.get("/:id/timeline", async (req, res) => {
+  try {
+    const { cursor, limit = 10 } = req.query;
+    const query = { leadId: req.params.id };
+    
+    // Cursor pagination using indexed createdAt
+    if (cursor) {
+      query.createdAt = { $lt: new Date(cursor) };
+    }
+
+    const activities = await LeadActivity.find(query)
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .populate("createdBy", "name");
+
+    const nextCursor = activities.length > 0 ? activities[activities.length - 1].createdAt : null;
+
+    res.json({
+      data: activities,
+      nextCursor
+    });
+  } catch (err) {
+    console.error("Error fetching timeline:", err);
+    res.status(500).json({ msg: "Server error" });
+  }
+});
+
+// POST /api/leads/:id/activities - Manually log a timeline activity
+router.post("/:id/activities", async (req, res) => {
+  try {
+    const { type, content } = req.body;
+    
+    if (!type) {
+      return res.status(400).json({ msg: "Activity type is required" });
+    }
+
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ msg: "Lead not found" });
+
+    const activity = await LeadActivity.create({
+      leadId: lead._id,
+      type,
+      content,
+      createdBy: req.user.id
+    });
+
+    const populatedActivity = await activity.populate("createdBy", "name");
+    res.status(201).json(populatedActivity);
+  } catch (err) {
+    console.error("Error creating activity:", err);
     res.status(500).json({ msg: "Server error" });
   }
 });
