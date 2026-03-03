@@ -197,8 +197,9 @@ router.post("/:id/ai-followup", async (req, res) => {
         if (current > 5) {
           return res.status(429).json({ msg: "Rate limit exceeded. Max 5 AI generations per hour." });
         }
-      } catch {
-        // Redis down — skip rate limiting
+      } catch (err) {
+        console.error("Redis Rate Limiter Error:", err);
+        return res.status(500).json({ msg: "Internal Server Error: Rate limiter is currently unavailable." });
       }
     }
 
