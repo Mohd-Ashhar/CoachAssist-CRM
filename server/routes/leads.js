@@ -1,7 +1,10 @@
 const router = require("express").Router();
 const Lead = require("../models/Lead");
 const LeadActivity = require("../models/LeadActivity");
+const AiFollowup = require("../models/AiFollowup");
 const auth = require("../middleware/auth");
+const { client: redis } = require("../lib/redis");
+const { generateFollowUp } = require("../lib/gemini");
 
 // All lead routes require authentication
 router.use(auth);
@@ -179,6 +182,57 @@ router.post("/:id/activities", async (req, res) => {
   } catch (err) {
     console.error("Error creating activity:", err);
     res.status(500).json({ msg: "Server error" });
+  }
+});
+
+// POST /api/leads/:id/ai-followup - Generate AI follow-up suggestions
+router.post("/:id/ai-followup", async (req, res) => {
+  try {
+    // Rate limit: 5 per user per hour (skip if Redis unavailable)
+    if (redis) {
+      try {
+        const rateLimitKey = `ai_ratelimit:${req.user.id}`;
+        const current = await redis.incr(rateLimitKey);
+        if (current === 1) await redis.expire(rateLimitKey, 3600);
+        if (current > 5) {
+          return res.status(429).json({ msg: "Rate limit exceeded. Max 5 AI generations per hour." });
+        }
+      } catch {
+        // Redis down — skip rate limiting
+      }
+    }
+
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ msg: "Lead not found" });
+
+    const recentActivities = await LeadActivity.find({ leadId: lead._id })
+      .sort({ createdAt: -1 })
+      .limit(3);
+
+    const aiOutput = await generateFollowUp(lead, recentActivities);
+
+    const saved = await AiFollowup.create({
+      leadId: lead._id,
+      whatsappMessage: aiOutput.whatsappMessage,
+      callScript: aiOutput.callScript,
+      objectionHandler: aiOutput.objectionHandler,
+      createdBy: req.user.id,
+    });
+
+    await LeadActivity.create({
+      leadId: lead._id,
+      type: "AI_MESSAGE_GENERATED",
+      content: `WhatsApp: ${aiOutput.whatsappMessage}`,
+      createdBy: req.user.id,
+    });
+
+    res.status(201).json(saved);
+  } catch (err) {
+    console.error("AI followup error:", err);
+    if (err.message?.includes("API key")) {
+      return res.status(500).json({ msg: "Gemini API key is not configured" });
+    }
+    res.status(500).json({ msg: "Failed to generate AI follow-up" });
   }
 });
 

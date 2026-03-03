@@ -39,4 +39,4 @@ const setCache = async (key, data, ttl = 60) => {
   }
 };
 
-module.exports = { getCache, setCache };
+module.exports = { client, getCache, setCache };
