@@ -458,14 +458,14 @@ export default function Leads() {
                             )}
                             AI Follow-up
                           </button>
-                          <button 
-                            onClick={() => handleOpenModal(lead)} 
+                          <Link 
+                            href={`/leads/${lead._id}`}
                             title="View Details"
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-all duration-150"
                           >
                             <Eye className="w-3.5 h-3.5" />
                             View
-                          </button>
+                          </Link>
                           <button 
                             onClick={() => handleOpenModal(lead)} 
                             title="Edit Lead"
